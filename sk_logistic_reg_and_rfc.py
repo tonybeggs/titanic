@@ -8,14 +8,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from string import punctuation
 
-from sklearn import datasets
 from sklearn.decomposition import PCA
-from sklearn.linear_model import SGDClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, precision_recall_curve
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.utils import resample
 
 from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
@@ -320,13 +320,30 @@ model_df.head()
 model_df.corr()
 
 
+# Separate train and test datasets.
+
+# In[25]:
+
+features = model_df[model_df.columns[1:]]
+targets = model_df[model_df.columns[0]]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    features, 
+    targets, 
+    test_size=0.30, 
+    random_state=1
+)
+
+
 # ## Build Model
+
+# ### Logistic Regression
 # Since the target is binary let's go with the logisitic regression estimator. This appears to be performing
 # better than an SGD classifier with these input features.
 # 
 # First GridSearch over `C` and `penalty` params to find optimal model.
 
-# In[25]:
+# In[26]:
 
 logistic_reg = LogisticRegression(
     max_iter=100, 
@@ -338,28 +355,105 @@ pipe = Pipeline(
     steps=[('logistic', logistic_reg)]
 )
 
-X_digits = model_df[model_df.columns[1:]]
-y_digits = model_df[model_df.columns[0]]
-
 # Set pipeline parameters and their ranges.
 param_grid = {
     'logistic__C': np.arange(0.1, 1.1, 0.1),
     'logistic__penalty': ['l1', 'l2'],
 }
+
 search = GridSearchCV(pipe, param_grid, iid=True, cv=5)
-search.fit(X_digits, y_digits)
+search.fit(X_train, y_train)
 "Best parameter (CV score=%0.3f):" % search.best_score_
 search.best_params_
 
 
 # Evaluate logistic regression model using optimal params.
 
-# In[26]:
+# In[27]:
 
 best_model = search.best_estimator_
-y_pred = best_model.predict(X_digits)
+y_pred = best_model.predict(X_test)
 
-'Mean prediction accuracy: ' + str(best_model.score(X_digits, y_digits))
-'Precision score: ' + str(precision_score(y_digits, y_pred, average='binary'))
-'Recall score: ' + str(recall_score(y_digits, y_pred, average='binary'))
+'Mean prediction accuracy: ' + str(best_model.score(X_test, y_test))
+'Precision score: ' + str(precision_score(y_test, y_pred, average='binary'))
+'Recall score: ' + str(recall_score(y_test, y_pred, average='binary'))
+
+
+# ### Random Forest Classifier
+# The performance of the logistic regression is not great. Let's look at a random forest
+# classifier.
+
+# In[28]:
+
+rfc = RandomForestClassifier()
+
+pipe = Pipeline(
+    steps=[('rfc', rfc)]
+)
+
+# Set pipeline parameters and their ranges.
+param_grid = {
+    'rfc__bootstrap': [True, False],
+    'rfc__n_estimators': np.arange(15, 46, 5),
+    'rfc__criterion': ['gini', 'entropy'],
+}
+
+search = GridSearchCV(pipe, param_grid, iid=True, cv=5)
+search.fit(X_train, y_train)
+"Best parameter (CV score=%0.3f):" % search.best_score_
+search.best_params_
+
+
+best_model = search.best_estimator_
+y_pred = best_model.predict(X_test)
+
+'Mean prediction accuracy: ' + str(best_model.score(X_test, y_test))
+'Precision score: ' + str(precision_score(y_test, y_pred, average='binary'))
+'Recall score: ' + str(recall_score(y_test, y_pred, average='binary'))
+
+
+# Let's try upsampling the minority class (survivors).
+
+# In[29]:
+
+
+def upsample_minority(X_train, y_train):
+    '''Artificially create more samples in the minority class using
+    k-nearest neighbours.
+    '''
+
+    # Concatenate training data back together.
+    X = pd.concat([X_train, y_train], axis=1)
+
+    # Separate minority and majority classes.
+    died = X[X['Survived'] == 0]
+    survived = X[X['Survived'] == 1]
+
+    # Upsample minority class.
+    survived_upsampled = resample(
+        survived,
+        replace=True,
+        n_samples=died.shape[0],
+        random_state=2
+    )
+
+    # Replace minority data with upsampled data.
+    upsampled = pd.concat([died, survived_upsampled])
+
+    upsamp_y_train = upsampled['Survived']
+    upsamp_X_train = upsampled.drop('Survived', axis=1)
+    
+    return upsamp_X_train, upsamp_y_train
+
+upsamp_X_train, upsamp_y_train = upsample_minority(X_train, y_train)
+
+# upsampled_model = LogisticRegression(solver='liblinear')
+upsampled_model = RandomForestClassifier(n_estimators=20)
+upsampled_model.fit(upsamp_X_train, upsamp_y_train)
+
+upsampled_pred = upsampled_model.predict(X_test)
+
+'Mean prediction accuracy: ' + str(upsampled_model.score(X_test, y_test))
+'Precision score: ' + str(precision_score(y_test, upsampled_pred, average='binary'))
+'Recall score: ' + str(recall_score(y_test, upsampled_pred, average='binary'))
 
