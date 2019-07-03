@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 import numpy as np
 import pandas as pd
@@ -21,9 +21,10 @@ from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
 
 
-# In[ ]:
+# In[2]:
 
 pd.options.display.max_rows = 100
+pd.options.mode.chained_assignment = None
 
 
 # ## Import Data
@@ -34,13 +35,13 @@ train_data = pd.read_csv('train.csv')
 train_data.shape
 
 
-# In[2]:
+# In[4]:
 
 test_data = pd.read_csv('test.csv')
 test_data.head()
 
 
-# In[3]:
+# In[5]:
 
 test_data.shape
 
@@ -48,7 +49,7 @@ test_data.shape
 # ## Explore Dataset
 # Check nulls, class balance and look at some value counts for different columns.
 
-# In[25]:
+# In[6]:
 
 # Count nulls in each column.
 [[col, train_data[col].isnull().sum()] for col in train_data.columns]
@@ -57,17 +58,17 @@ test_data.shape
 # Look at the class balance. Makes sense to balance classes for model input data.
 # Maybe look at bagging techniques.
 
-# In[4]:
+# In[7]:
 
 train_data['Survived'].value_counts(dropna=False)
 
 
-# In[5]:
+# In[8]:
 
 train_data['Pclass'].value_counts(dropna=False)
 
 
-# In[6]:
+# In[9]:
 
 train_data['Sex'].value_counts(dropna=False)
 
@@ -75,12 +76,12 @@ train_data['Sex'].value_counts(dropna=False)
 # Notably, `Age` is missing a significant number of values. Maybe we can later
 # impute values using averages across other fields.
 
-# In[204]:
+# In[10]:
 
-train_data['Age'].value_counts(dropna=False)
+train_data['Age'].value_counts(dropna=False).head(10)
 
 
-# In[8]:
+# In[11]:
 
 train_data['Embarked'].value_counts(dropna=False)
 
@@ -89,7 +90,7 @@ train_data['Embarked'].value_counts(dropna=False)
 # - There are significantly different class sizes
 # - There are different survival rates
 
-# In[131]:
+# In[12]:
 
 def embarkment_port_pivot(input_df):
     '''Create a pivot counting the survival/deaths of passengers embarking
@@ -112,17 +113,17 @@ df
 df[1] / (df[0] + df[1])
 
 
-# In[10]:
+# In[13]:
 
 train_data['SibSp'].value_counts(dropna=False)
 
 
-# In[11]:
+# In[14]:
 
 train_data['Embarked'].value_counts(dropna=False)
 
 
-# In[77]:
+# In[15]:
 
 train_data['Name'].head()
 
@@ -130,7 +131,7 @@ train_data['Name'].head()
 # ## Feature Engineering
 # Select and preprocess some features before modelling.
 
-# In[12]:
+# In[16]:
 
 def featurize_column(input_df, input_col, index_col=None):
     '''Convert a column of text labels into a dataframe of binary
@@ -190,7 +191,7 @@ def replace_with_featurized_column(input_df, input_col, index_col=None):
     return output_df
 
 
-# In[39]:
+# In[17]:
 
 def select_features(input_df):
     '''Select features to be input and preprocessed for model.
@@ -215,7 +216,7 @@ def select_features(input_df):
     return output_df
 
 
-# In[123]:
+# In[18]:
 
 def strip_punctuation(input_str):
     '''Remove all punctuation characters from string. Leaves
@@ -237,7 +238,7 @@ def get_unique_name_words(input_df):
     return s
 
 
-# In[52]:
+# In[19]:
 
 def get_married_female_column(input_df):
     ''' Find if a female is married by checking if her husband's name is
@@ -255,7 +256,7 @@ def get_married_female_column(input_df):
     return output_df
 
 
-# In[111]:
+# In[20]:
 
 def get_num_words_in_name(input_df):
     '''Find the number of words/terms in a passenger's name.
@@ -267,7 +268,7 @@ def get_num_words_in_name(input_df):
 
 
 
-# In[114]:
+# In[21]:
 
 def build_model_df(input_df):
     '''Preprocess features and rescale the data.
@@ -302,19 +303,19 @@ def build_model_df(input_df):
 model_df = build_model_df(train_data)
 
 
-# In[132]:
+# In[22]:
 
 model_df.shape
 
 
-# In[115]:
+# In[23]:
 
 model_df.head()
 
 
 # Examine the feature correlations in the model data:
 
-# In[133]:
+# In[24]:
 
 model_df.corr()
 
@@ -325,7 +326,7 @@ model_df.corr()
 # 
 # First GridSearch over `C` and `penalty` params to find optimal model.
 
-# In[202]:
+# In[25]:
 
 logistic_reg = LogisticRegression(
     max_iter=100, 
@@ -353,7 +354,7 @@ search.best_params_
 
 # Evaluate logistic regression model using optimal params.
 
-# In[203]:
+# In[26]:
 
 best_model = search.best_estimator_
 y_pred = best_model.predict(X_digits)
