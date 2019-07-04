@@ -13,7 +13,8 @@ from sklearn.linear_model import SGDClassifier, LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, precision_recall_curve
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import confusion_matrix, precision_recall_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.utils import resample
 
@@ -270,7 +271,25 @@ def get_num_words_in_name(input_df):
 
 # In[21]:
 
-def build_model_df(input_df):
+def get_mean_age(input_df):
+    '''
+    '''
+    group_cols = ['Pclass', 'SibSp', 'Parch']
+    mean_age = input_df.groupby(group_cols, as_index=False)['Age'].mean()
+    
+    mean_age = mean_age.rename(columns={'Age': 'mean_age'})
+    
+    df = input_df.merge(mean_age, on=group_cols, how='left')
+    
+    age_data = df[['Age', 'mean_age']].values
+    imputed_age = [age[0] if age[0] == np.nan else age[1] for age in age_data]
+    
+    return imputed_age
+
+
+# In[22]:
+
+def build_model_df(input_df, nulls='drop'):
     '''Preprocess features and rescale the data.
     '''
     
@@ -286,12 +305,18 @@ def build_model_df(input_df):
     # Turn embarkment port column into binary columns.
     for col in ['Embarked']:
         model_df = replace_with_featurized_column(model_df, col)
+        
+    model_df['Age'] = get_mean_age(model_df)
       
     # Store columns before dataframe gets turned into array by scaler.
     model_cols = model_df.columns
         
     # Rescale the data.
-    model_df = model_df.dropna()
+    if nulls == 'drop':
+        model_df = model_df.dropna()
+    else:
+        for col in model_df.columns:
+            model_df[col] = model_df[col].fillna(model_df[col].mean())
     scaler = MinMaxScaler(feature_range=(0, 1))
     model_df = pd.DataFrame(
         data=scaler.fit_transform(model_df),
@@ -301,28 +326,31 @@ def build_model_df(input_df):
     return model_df
 
 model_df = build_model_df(train_data)
-
-
-# In[22]:
-
 model_df.shape
 
 
 # In[23]:
+
+model_df.shape
+
+
+# In[24]:
 
 model_df.head()
 
 
 # Examine the feature correlations in the model data:
 
-# In[24]:
+# In[25]:
 
 model_df.corr()
 
 
 # Separate train and test datasets.
 
-# In[25]:
+# In[26]:
+
+# model_df = model_df[['Survived', 'Pclass', 'Sex', 'Fare', 'num_words_in_name', 'IsMarriedWoman']]
 
 features = model_df[model_df.columns[1:]]
 targets = model_df[model_df.columns[0]]
@@ -330,7 +358,7 @@ targets = model_df[model_df.columns[0]]
 X_train, X_test, y_train, y_test = train_test_split(
     features, 
     targets, 
-    test_size=0.30, 
+    test_size=0.40, 
     random_state=1
 )
 
@@ -343,7 +371,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 # 
 # First GridSearch over `C` and `penalty` params to find optimal model.
 
-# In[26]:
+# In[27]:
 
 logistic_reg = LogisticRegression(
     max_iter=100, 
@@ -366,10 +394,7 @@ search.fit(X_train, y_train)
 "Best parameter (CV score=%0.3f):" % search.best_score_
 search.best_params_
 
-
-# Evaluate logistic regression model using optimal params.
-
-# In[27]:
+'Evaluate logistic regression model using optimal params:'
 
 best_model = search.best_estimator_
 y_pred = best_model.predict(X_test)
@@ -379,11 +404,32 @@ y_pred = best_model.predict(X_test)
 'Recall score: ' + str(recall_score(y_test, y_pred, average='binary'))
 
 
+# In[28]:
+
+# Generate output using linear regressor
+
+output_df = test_data.copy()
+output_df['Survived'] = 1
+output_df = build_model_df(output_df, nulls='mean')
+output_df = output_df[output_df.columns[1:]]
+
+output_y_pred = best_model.predict(output_df)
+
+final = test_data[['PassengerId']]
+final['Survived'] = output_y_pred.astype(int)
+
+
+# In[29]:
+
+now = pd.to_datetime('now').strftime('%Y%m%dT%H%M%S')
+# final.to_csv(now + 'titanic_submission.csv', index=False)
+
+
 # ### Random Forest Classifier
 # The performance of the logistic regression is not great. Let's look at a random forest
 # classifier.
 
-# In[28]:
+# In[30]:
 
 rfc = RandomForestClassifier()
 
@@ -403,6 +449,7 @@ search.fit(X_train, y_train)
 "Best parameter (CV score=%0.3f):" % search.best_score_
 search.best_params_
 
+'Evaluate Random Forest Classifier model:'
 
 best_model = search.best_estimator_
 y_pred = best_model.predict(X_test)
@@ -414,8 +461,7 @@ y_pred = best_model.predict(X_test)
 
 # Let's try upsampling the minority class (survivors).
 
-# In[29]:
-
+# In[33]:
 
 def upsample_minority(X_train, y_train):
     '''Artificially create more samples in the minority class using
